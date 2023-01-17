@@ -8,11 +8,9 @@ export class Uploadfile extends Document {
 
     _id?: string
     @Prop({
-        unique: true,
+        unique: true, index: true
     })   
-    name: string;
-    @Prop()
-    url: string;   
+    name: string; 
     @Prop() 
     versions?: [];
 
@@ -22,8 +20,14 @@ export class Uploadfile extends Document {
 }
 
 export class Versions extends Document {
+    @Prop({
+        unique: true, index: true, auto:true 
+    }) 
+    _id?: string
     @Prop()
     version?: string;
+    @Prop()
+    name?:string;
     @Prop()
     state?: string;  
     @Prop()   

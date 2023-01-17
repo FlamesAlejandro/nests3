@@ -5,9 +5,11 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, isValidObjectId } from 'mongoose';
 import { ConfigService } from '@nestjs/config';
 import { BadRequestException, InternalServerErrorException, NotFoundException } from '@nestjs/common/exceptions';
-import { Uploadfile } from './entities/uploadfile.entity';
+import { Uploadfile, Versions } from './entities/uploadfile.entity';
 import * as AWS from 'aws-sdk';
 import { ObjectId } from 'mongodb';
+import { CreateFirstfileDto } from './dto/create-firstfile.dto';
+import { CreateVersionfileDto } from './dto/create-versionfile.dto';
 
 
 const bucketName='';
@@ -35,7 +37,23 @@ export class UploadfileService {
 
   async create(createUploadfileDto: CreateUploadfileDto) {
     try{
-        const uploadfile = await this.uploadfileModel.create( createUploadfileDto );
+        const objectId = new ObjectId();
+        const uploadfile = await this.uploadfileModel.create(
+          {
+            name: createUploadfileDto.name,
+            versions: [
+              {
+                _id: objectId,
+                version: createUploadfileDto.versions[0].version,
+                state:createUploadfileDto.versions[0].state,
+                creationDate:createUploadfileDto.versions[0].creationDate,
+                approvedBy:createUploadfileDto.versions[0].approvedBy,
+                observation:createUploadfileDto.versions[0].observation
+              }
+            ],
+            modificationDate: createUploadfileDto.modificationDate
+          }
+        );
 
         return uploadfile;
     }
@@ -67,6 +85,40 @@ export class UploadfileService {
     return uploadfile;
   }
 
+  // ESTO FUNCIONA, AGREGAR UNA VERSION!
+
+  // async update( term: string, createVersionfileDto: CreateVersionfileDto) {
+
+  //   const objectId = new ObjectId();
+  //   const formulario = await this.findOne( term );
+  //   const arreglo = 
+  //   {
+  //     _id: objectId,
+  //     version: createVersionfileDto.version,
+  //     state: createVersionfileDto.state,
+  //     creationDate: createVersionfileDto.creationDate,
+  //     approvedBy: createVersionfileDto.approvedBy,
+  //     observation: createVersionfileDto.observation,
+  //   }
+    
+  //   try {
+  //     await formulario.updateOne(
+  //       {        
+  //         $push: {
+  //           versions: arreglo,
+  //         }
+  //       }
+  //     );
+      
+  //     return { ...formulario.toJSON(), ...createVersionfileDto };
+      
+  //   } catch (error) {
+  //     this.handleExceptions( error );
+  //   }
+  //   return `This action up uploadfile`;
+
+  // }
+
   async update( term: string, updateUploadfileDto: UpdateUploadfileDto) {
 
     const formulario = await this.findOne( term );
@@ -82,31 +134,83 @@ export class UploadfileService {
 
   }
 
-  async uploadversion(file) {
-    // asignar nombre de la carpeta
-
-    // id random
-    const objectId = new ObjectId();
-    const arr_name = file.originalname.split('.');
-    const extension = arr_name.pop();
-    // nombre
-    const name = arr_name.join('.');
-    // version
-    const version = 1;
-    const folder = objectId+':'+this.slug(name);
+  async uploadnewfile(file, createFirstfileDto: CreateFirstfileDto) {
     
-    const key = folder + '/' + this.slug(name) + ':' + version + '.' + extension;
-    // para guardar en una bdd
-    const data = {
-      _id: objectId,
-      name: name,
-      file_name: String(file.originalname),
-      mime_type: file.mimetype,
-      size: file.size,
-      key: key,
-    };
-    return await this.uploadS3(file.buffer, key, file.mimetype);
-    // return await this.mediaRepository.create(data);
+    try {
+      const objectId = new ObjectId();
+      const uploadfile = await this.uploadfileModel.create(
+        {
+          
+          name: createFirstfileDto.name,
+          versions: [
+            {
+              _id: objectId,
+              name: file.originalname,
+              version: createFirstfileDto.version,
+              state:createFirstfileDto.state,
+              creationDate:createFirstfileDto.creationDate,
+              approvedBy:createFirstfileDto.approvedBy,
+              observation:createFirstfileDto.observation
+            }
+          ],
+          modificationDate: createFirstfileDto.modificationDate
+        }
+      );
+      const arr_name = file.originalname.split('.');
+      const extension = arr_name.pop();
+      const name = arr_name.join('.');
+      const folder = uploadfile._id+'/'+objectId;
+      const key = folder + '/' + this.slug(name) + '.' + extension;
+      return await this.uploadS3(file.buffer, key, file.mimetype);
+
+    }
+    catch (error)
+    {
+      this.handleExceptions( error );
+    }  
+
+  }
+
+  async uploadversion(file, createVersionfileDto: CreateVersionfileDto) {
+    
+    try {
+      const objectId = new ObjectId();
+      // la ID que trae el formulario es la ID de la carpeta del archivo
+      const formulario = await this.findOne( createVersionfileDto._id );
+      const arreglo = 
+      {
+        _id: objectId,
+        version: createVersionfileDto.version,
+        state: createVersionfileDto.state,
+        creationDate: createVersionfileDto.creationDate,
+        approvedBy: createVersionfileDto.approvedBy,
+        observation: createVersionfileDto.observation,
+      }
+
+      await formulario.updateOne(
+        {        
+          $push: {
+            versions: arreglo,
+          }
+        }
+      );
+
+
+      const arr_name = file.originalname.split('.');
+      const extension = arr_name.pop();
+      const name = arr_name.join('.');
+      const folder = createVersionfileDto._id+'/'+objectId;
+      const key = folder + '/' + this.slug(name) + '.' + extension;
+      
+      
+      return await this.uploadS3(file.buffer, key, file.mimetype);
+
+    }
+    catch (error)
+    {
+      this.handleExceptions( error );
+    }  
+
   }
 
   private async uploadS3(file_buffer, key, content_type) {
